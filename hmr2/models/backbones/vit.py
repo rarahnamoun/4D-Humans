@@ -317,14 +317,30 @@ class ViT(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
-    def forward_features(self, x):
+    def forward_features(self, x, cls_token_required=True):
         B, C, H, W = x.shape
         x, (Hp, Wp) = self.patch_embed(x)
 
         if self.pos_embed is not None:
-            # fit for multiple GPU training
-            # since the first element for pos embed (sin-cos manner) is zero, it will cause no difference
-            x = x + self.pos_embed[:, 1:] + self.pos_embed[:, :1]
+            cls_token = self.pos_embed[:, :1]  # Shape [1, 1, C]
+            pos_embed = self.pos_embed[:, 1:]  # Shape [1, num_pos, C]
+
+            num_patches = Hp * Wp
+            pos_embed = F.interpolate(
+                pos_embed.reshape(1, int(self.patch_embed.origin_patch_shape[0]), int(self.patch_embed.origin_patch_shape[1]), -1).permute(0, 3, 1, 2),
+                size=(Hp, Wp),
+                mode="bicubic",
+                align_corners=False
+            ).permute(0, 2, 3, 1).reshape(1, num_patches, -1)
+            
+            if cls_token_required:
+                x = torch.cat((cls_token.expand(B, -1, -1), x), dim=1)
+                pos_embed = torch.cat((cls_token, pos_embed), dim=1)
+                num_patches += 1
+
+            assert x.shape[1] == pos_embed.shape[1], f"Shape mismatch: x has {x.shape[1]} patches, but pos_embed has {pos_embed.shape[1]} positions"
+            
+            x = x + pos_embed
 
         for blk in self.blocks:
             if self.use_checkpoint:
@@ -334,9 +350,18 @@ class ViT(nn.Module):
 
         x = self.last_norm(x)
 
-        xp = x.permute(0, 2, 1).reshape(B, -1, Hp, Wp).contiguous()
+        # Adjust the reshaping
+        _, num_tokens, dim = x.shape  # Get the shape after the last norm
+        if cls_token_required:
+            x = x[:, 1:, :]  # Remove the class token if it exists
+
+        xp = x.permute(0, 2, 1).reshape(B, dim, Hp, Wp).contiguous()
 
         return xp
+
+
+
+
 
     def forward(self, x):
         x = self.forward_features(x)
