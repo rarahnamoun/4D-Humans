@@ -74,7 +74,10 @@ class SMPLTransformerDecoderHead(nn.Module):
         pred_body_pose_list = []
         pred_betas_list = []
         pred_cam_list = []
-        for i in range(self.cfg.MODEL.SMPL_HEAD.get('IEF_ITERS', 1)):
+        # Extract the configuration value before any TorchScript tracing begins
+        #print(self.cfg.MODEL.SMPL_HEAD.get('IEF_ITERS', 1))
+        #and put instead of number 1 in loop
+        for i in range(1):
             # Input token to transformer is zero token
             if self.input_is_mean_shape:
                 token = torch.cat([pred_body_pose, pred_betas, pred_cam], dim=1)[:,None,:]
