@@ -72,28 +72,28 @@ class HMR2(pl.LightningModule):
         device = pred_smpl_params['body_pose'].device
         dtype = pred_smpl_params['body_pose'].dtype
         focal_length = self.cfg.EXTRA.FOCAL_LENGTH * torch.ones(batch_size, 2, device=device, dtype=dtype)
-        pred_cam_t = torch.stack([pred_cam[:, 1],
-                                  pred_cam[:, 2],
-                                  2 * focal_length[:, 0] / (self.cfg.MODEL.IMAGE_SIZE * pred_cam[:, 0] + 1e-9)], dim=-1)
+        pred_cam_t = torch.stack([
+            pred_cam[:, 1],
+            pred_cam[:, 2],
+            2 * focal_length[:, 0] / (self.cfg.MODEL.IMAGE_SIZE * pred_cam[:, 0] + 1e-9)
+        ], dim=-1)
+        
         output['pred_cam_t'] = pred_cam_t
         output['focal_length'] = focal_length
 
-        pred_smpl_params['global_orient'] = pred_smpl_params['global_orient'].reshape(batch_size, -1, 3, 3)
-        pred_smpl_params['body_pose'] = pred_smpl_params['body_pose'].reshape(batch_size, -1, 3, 3)
-        pred_smpl_params['betas'] = pred_smpl_params['betas'].reshape(batch_size, -1)
-        smpl_output = self.smpl(**{k: v.float() for k, v in pred_smpl_params.items()}, pose2rot=False)
-        pred_keypoints_3d = smpl_output.joints
-        pred_vertices = smpl_output.vertices
-        output['pred_keypoints_3d'] = pred_keypoints_3d.reshape(batch_size, -1, 3)
-        output['pred_vertices'] = pred_vertices.reshape(batch_size, -1, 3)
-        pred_cam_t = pred_cam_t.reshape(-1, 3)
-        focal_length = focal_length.reshape(-1, 2)
-        pred_keypoints_2d = perspective_projection(pred_keypoints_3d,
-                                                   translation=pred_cam_t,
-                                                   focal_length=focal_length / self.cfg.MODEL.IMAGE_SIZE)
+        # Remove SMPL output calculations
+        # No need for reshaping and computing keypoints_3d or vertices
+        # Just use dummy values or adjust based on your new model outputs if applicable
 
-        output['pred_keypoints_2d'] = pred_keypoints_2d.reshape(batch_size, -1, 2)
+        # If needed, you can include alternative processing here
+        # For example:
+        # output['pred_keypoints_3d'] = torch.zeros(batch_size, 0, 3)  # Adjust dimensions as necessary
+        # output['pred_vertices'] = torch.zeros(batch_size, 0, 3)       # Adjust dimensions as necessary
+        # output['pred_keypoints_2d'] = torch.zeros(batch_size, 0, 2)   # Adjust dimensions as necessary
+
         return output
+
+
 
     def compute_loss(self, batch: Dict[str, torch.Tensor], output: Dict[str, torch.Tensor], train: bool = True) -> torch.Tensor:
         pred_smpl_params = output['pred_smpl_params']
@@ -241,9 +241,10 @@ class HMR2(pl.LightningModule):
     def export_to_onnx(self, dummy_input: torch.Tensor, file_path: str) -> None:
         torch_input = torch.randn(1, 3, 256, 256)
         onnx_program = torch.onnx.dynamo_export(self, torch_input)
+        onnx_program.save("mlp.onnx")
     def export_to_onnx2(self, dummy_input: torch.Tensor, file_path: str) -> None:
         torch.onnx.export(self,               # model being run
-        torch.randn((1, 3, 224, 224)),         # model input (or a tuple for multiple inputs)
+        torch.randn((1, 3, 226, 226)),         # model input (or a tuple for multiple inputs)
         file_path,           # where to save the model
         export_params=True,  # store the trained parameter weights inside the model file
         opset_version=12,    # the ONNX version to export the model to
